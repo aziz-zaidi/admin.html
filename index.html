@@ -791,7 +791,7 @@
                     </div>
                     <div class="form-group">
                         <label for="student-level">Niveau</label>
-                        <select id="student-level" required>
+                        <select id="student-level" onchange="updateStudentSections(this.value)" required>
                             <option value="1ere">1ère Année Secondaire</option>
                             <option value="2eme">2ème Année Secondaire</option>
                             <option value="3eme">3ème Année Secondaire</option>
@@ -799,8 +799,8 @@
                         </select>
                     </div>
                     <div class="form-group full-width">
-                        <label for="student-section">Section</label>
-                        <input type="text" id="student-section" value="Bac Mathématiques" required />
+                        <label for="student-section">Filière / Section</label>
+                        <select id="student-section" required></select>
                     </div>
                 </div>
                 <button type="submit" class="btn-submit">Créer l'accès étudiant</button>
@@ -931,7 +931,8 @@
 
             submitButton.disabled = false;
             if (error) {
-                status.textContent = `Échec : ${error.message}`;
+                const responseText = await error.context?.text?.().catch(() => '');
+                status.textContent = `Échec : ${responseText || error.message}. Vérifiez que la fonction create-student est déployée.`;
                 return;
             }
 
@@ -939,6 +940,17 @@
             status.textContent = 'Compte étudiant créé.';
             loadStudents();
             loadDashboardStats();
+        }
+
+        function updateStudentSections(level) {
+            const sections = {
+                '1ere': ['Tronc Commun'],
+                '2eme': ['Sciences', 'Technologie', 'Économie et Services', 'Lettres'],
+                '3eme': ['Mathématiques', 'Sciences Expérimentales', 'Sciences Techniques', 'Sciences de l\'Informatique', 'Économie et Gestion', 'Lettres', 'Sport'],
+                'bac': ['Bac Mathématiques', 'Bac Sciences Expérimentales', 'Bac Sciences Techniques', 'Bac Sciences de l\'Informatique', 'Bac Économie et Gestion', 'Bac Lettres', 'Bac Sport']
+            };
+            const select = document.getElementById('student-section');
+            select.innerHTML = (sections[level] || []).map(section => `<option value="${section}">${section}</option>`).join('');
         }
 
         async function handleCreateLesson(e) {
@@ -1038,6 +1050,8 @@
             await supabaseClient.auth.signOut();
             window.location.href = MAIN_SITE_URL;
         }
+
+        updateStudentSections(document.getElementById('student-level').value);
     </script>
 </body>
 </html>
