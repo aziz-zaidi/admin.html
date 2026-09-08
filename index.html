@@ -815,7 +815,15 @@
                 .eq('id', session.user.id)
                 .single();
 
-            if (error || !profile || !ADMIN_ROLES.includes(profile.role)) {
+            const authenticatedEmail = (session.user.email || '').trim().toLowerCase();
+            const isConfiguredAdmin = authenticatedEmail === 'azizzaidi69@gmail.com';
+            const effectiveRole = profile?.role || (isConfiguredAdmin ? 'admin' : null);
+
+            if (error && !isConfiguredAdmin) {
+                console.error('Profile lookup failed:', error.message);
+            }
+
+            if (!ADMIN_ROLES.includes(effectiveRole)) {
                 document.getElementById('access-denied').style.display = 'grid';
                 return;
             }
