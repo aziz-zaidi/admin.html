@@ -775,6 +775,37 @@
 
         <div id="tab-students" class="admin-section">
             <h2 class="section-title">Liste des Élèves Inscrits</h2>
+            <form id="add-student-form" onsubmit="handleCreateStudent(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="student-name">Nom complet</label>
+                        <input type="text" id="student-name" required autocomplete="name" />
+                    </div>
+                    <div class="form-group">
+                        <label for="student-email">Email étudiant</label>
+                        <input type="email" id="student-email" required autocomplete="email" />
+                    </div>
+                    <div class="form-group">
+                        <label for="student-password">Mot de passe temporaire</label>
+                        <input type="password" id="student-password" required minlength="6" autocomplete="new-password" />
+                    </div>
+                    <div class="form-group">
+                        <label for="student-level">Niveau</label>
+                        <select id="student-level" required>
+                            <option value="1ere">1ère Année Secondaire</option>
+                            <option value="2eme">2ème Année Secondaire</option>
+                            <option value="3eme">3ème Année Secondaire</option>
+                            <option value="bac" selected>Baccalauréat</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="student-section">Section</label>
+                        <input type="text" id="student-section" value="Bac Mathématiques" required />
+                    </div>
+                </div>
+                <button type="submit" class="btn-submit">Créer l'accès étudiant</button>
+                <small id="student-create-status" aria-live="polite"></small>
+            </form>
             <table>
                 <thead>
                     <tr>
@@ -877,6 +908,37 @@
             document.getElementById('stat-students').innerText = studentCount || 0;
             document.getElementById('stat-lessons').innerText = lessonCount || 0;
             document.getElementById('stat-exercises').innerText = exerciseCount || 0;
+        }
+
+        async function handleCreateStudent(event) {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const status = document.getElementById('student-create-status');
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            submitButton.disabled = true;
+            status.textContent = 'Création du compte...';
+
+            const { error } = await supabaseClient.functions.invoke('create-student', {
+                body: {
+                    email: document.getElementById('student-email').value.trim(),
+                    password: document.getElementById('student-password').value,
+                    full_name: document.getElementById('student-name').value.trim(),
+                    level: document.getElementById('student-level').value,
+                    section: document.getElementById('student-section').value.trim()
+                }
+            });
+
+            submitButton.disabled = false;
+            if (error) {
+                status.textContent = `Échec : ${error.message}`;
+                return;
+            }
+
+            form.reset();
+            status.textContent = 'Compte étudiant créé.';
+            loadStudents();
+            loadDashboardStats();
         }
 
         async function handleCreateLesson(e) {
