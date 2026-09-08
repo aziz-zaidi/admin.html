@@ -801,8 +801,33 @@
         let currentUser = null;
         const LESSON_FILES_BUCKET = 'lesson-files';
 
+        async function restoreTransferredSession() {
+            const params = new URLSearchParams(window.location.search);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (!accessToken || !refreshToken) return null;
+
+            const { data, error } = await supabaseClient.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+            });
+
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            if (error) {
+                console.error('Session transfer failed:', error.message);
+                return null;
+            }
+
+            return data.session;
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
-            const { data: { session } } = await supabaseClient.auth.getSession();
+            const transferredSession = await restoreTransferredSession();
+            const { data: { session } } = transferredSession
+                ? { data: { session: transferredSession } }
+                : await supabaseClient.auth.getSession();
 
             if (!session) {
                 window.location.href = MAIN_SITE_URL;
