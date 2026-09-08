@@ -650,7 +650,7 @@
         <div class="denied-box">
             <h2>Accès Refusé</h2>
             <p>Vous n'avez pas les permissions administrateur.</p>
-            <button class="btn-submit" onclick="window.location.href='test.html'">Retour au Site Élève</button>
+            <button class="btn-submit" onclick="window.location.href=MAIN_SITE_URL">Retour au Site Élève</button>
         </div>
     </div>
 
@@ -699,9 +699,8 @@
                     <div class="form-group">
                         <label>Matière</label>
                         <select id="lesson-subject" required>
-                            <option value="technique">Génie Technique</option>
-                            <option value="physique">Physique & Chimie</option>
-                            <option value="maths">Mathématiques</option>
+                            <option value="physique">Physique</option>
+                            <option value="chimie">Chimie</option>
                         </select>
                     </div>
 
@@ -713,6 +712,21 @@
                             <option value="series">Séries</option>
                             <option value="devoirs">Devoirs</option>
                         </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lesson-level">Niveau</label>
+                        <select id="lesson-level" required>
+                            <option value="1ere">1ère Année Secondaire</option>
+                            <option value="2eme">2ème Année Secondaire</option>
+                            <option value="3eme">3ème Année Secondaire</option>
+                            <option value="bac" selected>Baccalauréat</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lesson-section">Section</label>
+                        <input type="text" id="lesson-section" value="Bac Mathématiques" required />
                     </div>
 
                     <div class="form-group full-width">
@@ -781,6 +795,8 @@
         
         // Initialisation correcte sans conflit de nom de variable
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const MAIN_SITE_URL = 'https://zaidi-academy.vercel.app/';
+        const ADMIN_ROLES = ['admin', 'teacher'];
 
         let currentUser = null;
         const LESSON_FILES_BUCKET = 'lesson-files';
@@ -788,6 +804,9 @@
         window.addEventListener('DOMContentLoaded', async () => {
             const { data: { session } } = await supabaseClient.auth.getSession();
 
+            if (!session) {
+                window.location.href = MAIN_SITE_URL;
+                return;
             }
 
             const { data: profile, error } = await supabaseClient
@@ -796,7 +815,7 @@
                 .eq('id', session.user.id)
                 .single();
 
-            if (error || !profile || profile.role !== 'admin') {
+            if (error || !profile || !ADMIN_ROLES.includes(profile.role)) {
                 document.getElementById('access-denied').style.display = 'grid';
                 return;
             }
@@ -833,6 +852,8 @@
             const uploadStatus = document.getElementById('upload-status');
             const subject_id = document.getElementById('lesson-subject').value;
             const category = document.getElementById('lesson-category').value;
+            const level_key = document.getElementById('lesson-level').value;
+            const section_key = document.getElementById('lesson-section').value.trim();
             const title = document.getElementById('lesson-title').value;
             const description = document.getElementById('lesson-desc').value;
             let pdf_url = document.getElementById('lesson-pdf').value.trim();
@@ -870,7 +891,7 @@
                     if (uploadStatus) uploadStatus.textContent = 'PDF téléversé. Publication en cours...';
                 }
 
-                const { error } = await supabaseClient.from('lessons').insert([{ subject_id, category, title, description, pdf_url, video_url }]);
+                const { error } = await supabaseClient.from('lessons').insert([{ subject_id, category, level_key, section_key, title, description, pdf_url, video_url }]);
 
                 if (error) throw error;
                 alert("Leçon publiée !");
@@ -920,7 +941,7 @@
 
         async function logout() {
             await supabaseClient.auth.signOut();
-            window.location.href = 'test.html';
+            window.location.href = MAIN_SITE_URL;
         }
     </script>
 </body>
