@@ -755,7 +755,9 @@
                         <input type="url" id="lesson-video" placeholder="https://youtube.com/..." />
                     </div>
                 </div>
-                <button type="submit" class="btn-submit">Publier la Leçon</button>
+                <input type="hidden" id="lesson-edit-id" value="" />
+                <button type="submit" class="btn-submit" id="lesson-submit-button">Publier la Leçon</button>
+                <button type="button" class="btn-delete" id="lesson-cancel-edit" onclick="cancelLessonEdit()" hidden>Annuler la modification</button>
             </form>
 
             <h2 class="section-title" style="margin-top: 36px;">Leçons Existantes</h2>
@@ -919,21 +921,32 @@
             submitButton.disabled = true;
             status.textContent = 'Création du compte...';
 
-            const { error } = await supabaseClient.functions.invoke('create-student', {
-                body: {
-                    email: document.getElementById('student-email').value.trim(),
-                    password: document.getElementById('student-password').value,
-                    full_name: document.getElementById('student-name').value.trim(),
-                    level: document.getElementById('student-level').value,
-                    section: document.getElementById('student-section').value.trim()
-                }
-            });
+            try {
+                const { error } = await supabaseClient.functions.invoke('create-student', {
+                    body: {
+                        email: document.getElementById('student-email').value.trim(),
+                        password: document.getElementById('student-password').value,
+                        full_name: document.getElementById('student-name').value.trim(),
+                        level: document.getElementById('student-level').value,
+                        section: document.getElementById('student-section').value.trim()
+                    }
+                });
 
-            submitButton.disabled = false;
-            if (error) {
-                const responseText = await error.context?.text?.().catch(() => '');
-                status.textContent = `Échec : ${responseText || error.message}. Vérifiez que la fonction create-student est déployée.`;
-                return;
+                if (error) {
+                    const responseText = await error.context?.text?.().catch(() => '');
+                    let details = responseText || error.message;
+                    try {
+                        details = JSON.parse(details).message || details;
+                    } catch {
+                        // Keep the original response when it is not JSON.
+                    }
+                    status.textContent = details.includes('function was not found')
+                        ? 'Échec : la fonction create-student n’est pas déployée sur Supabase.'
+                        : `Échec : ${details}`;
+                    return;
+                }
+            } finally {
+                submitButton.disabled = false;
             }
 
             form.reset();
@@ -957,6 +970,7 @@
             e.preventDefault();
             const submitButton = e.submitter || document.querySelector('#add-lesson-form .btn-submit');
             const uploadStatus = document.getElementById('upload-status');
+            const editId = document.getElementById('lesson-edit-id').value;
             const subject_id = document.getElementById('lesson-subject').value;
             const category = document.getElementById('lesson-category').value;
             const level_key = document.getElementById('lesson-level').value;
@@ -998,11 +1012,16 @@
                     if (uploadStatus) uploadStatus.textContent = 'PDF téléversé. Publication en cours...';
                 }
 
-                const { error } = await supabaseClient.from('lessons').insert([{ subject_id, category, level_key, section_key, title, description, pdf_url, video_url }]);
+                const lessonData = { subject_id, category, level_key, section_key, title, description, pdf_url, video_url };
+                const result = editId
+                    ? await supabaseClient.from('lessons').update(lessonData).eq('id', editId)
+                    : await supabaseClient.from('lessons').insert([lessonData]);
+                const error = result.error;
 
                 if (error) throw error;
-                alert("Leçon publiée !");
+                alert(editId ? "Leçon modifiée !" : "Leçon publiée !");
                 document.getElementById('add-lesson-form').reset();
+                cancelLessonEdit();
                 if (uploadStatus) uploadStatus.textContent = '';
                 loadLessons();
                 loadDashboardStats();
@@ -1021,9 +1040,42 @@
             if (lessons) {
                 lessons.forEach(l => {
                     const pdfLink = l.pdf_url ? `<a href="${l.pdf_url}" target="_blank" rel="noopener">Ouvrir PDF</a>` : '—';
-                    tbody.innerHTML += `<tr><td><strong>${l.title}</strong></td><td>${l.subject_id}</td><td>${l.category}</td><td>${pdfLink}</td><td><button class="btn-delete" onclick="deleteLesson('${l.id}')">Supprimer</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><strong>${l.title}</strong></td><td>${l.subject_id}</td><td>${l.category}</td><td>${pdfLink}</td><td><button class="btn-submit" type="button" onclick="editLesson('${l.id}')">Modifier</button> <button class="btn-delete" type="button" onclick="deleteLesson('${l.id}')">Supprimer</button></td></tr>`;
                 });
             }
+        }
+
+        async function editLesson(id) {
+            const { data: lesson, error } = await supabaseClient
+                .from('lessons')
+                .select('id, subject_id, category, level_key, section_key, title, description, pdf_url, video_url')
+                .eq('id', id)
+                .single();
+
+            if (error || !lesson) {
+                alert(`Impossible de charger la leçon : ${error?.message || 'introuvable'}`);
+                return;
+            }
+
+            document.getElementById('lesson-edit-id').value = lesson.id;
+            document.getElementById('lesson-subject').value = lesson.subject_id || 'physique';
+            document.getElementById('lesson-category').value = lesson.category || 'cours';
+            document.getElementById('lesson-level').value = lesson.level_key || 'bac';
+            document.getElementById('lesson-section').value = lesson.section_key || '';
+            document.getElementById('lesson-title').value = lesson.title || '';
+            document.getElementById('lesson-desc').value = lesson.description || '';
+            document.getElementById('lesson-pdf').value = lesson.pdf_url || '';
+            document.getElementById('lesson-video').value = lesson.video_url || '';
+            document.getElementById('lesson-pdf-file').value = '';
+            document.getElementById('lesson-submit-button').textContent = 'Enregistrer les modifications';
+            document.getElementById('lesson-cancel-edit').hidden = false;
+            document.getElementById('add-lesson-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function cancelLessonEdit() {
+            document.getElementById('lesson-edit-id').value = '';
+            document.getElementById('lesson-submit-button').textContent = 'Publier la Leçon';
+            document.getElementById('lesson-cancel-edit').hidden = true;
         }
 
         async function deleteLesson(id) {
