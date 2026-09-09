@@ -729,6 +729,15 @@
                         <input type="text" id="lesson-section" value="Bac Mathématiques" required />
                     </div>
 
+                    <div class="form-group">
+                        <label for="lesson-trimester">Trimestre</label>
+                        <select id="lesson-trimester" required>
+                            <option value="1">Trimestre 1</option>
+                            <option value="2">Trimestre 2</option>
+                            <option value="3">Trimestre 3</option>
+                        </select>
+                    </div>
+
                     <div class="form-group full-width">
                         <label>Titre de la leçon</label>
                         <input type="text" id="lesson-title" placeholder="ex: Trains épicycloïdaux" required />
@@ -767,6 +776,7 @@
                         <th>Titre</th>
                         <th>Matière</th>
                         <th>Catégorie</th>
+                        <th>Trimestre</th>
                         <th>PDF</th>
                         <th>Actions</th>
                     </tr>
@@ -975,6 +985,7 @@
             const category = document.getElementById('lesson-category').value;
             const level_key = document.getElementById('lesson-level').value;
             const section_key = document.getElementById('lesson-section').value.trim();
+            const trimester = Number(document.getElementById('lesson-trimester').value);
             const title = document.getElementById('lesson-title').value;
             const description = document.getElementById('lesson-desc').value;
             let pdf_url = document.getElementById('lesson-pdf').value.trim();
@@ -1012,7 +1023,7 @@
                     if (uploadStatus) uploadStatus.textContent = 'PDF téléversé. Publication en cours...';
                 }
 
-                const lessonData = { subject_id, category, level_key, section_key, title, description, pdf_url, video_url };
+                const lessonData = { subject_id, category, level_key, section_key, trimester, title, description, pdf_url, video_url };
                 const result = editId
                     ? await supabaseClient.from('lessons').update(lessonData).eq('id', editId)
                     : await supabaseClient.from('lessons').insert([lessonData]);
@@ -1040,7 +1051,7 @@
             if (lessons) {
                 lessons.forEach(l => {
                     const pdfLink = l.pdf_url ? `<a href="${l.pdf_url}" target="_blank" rel="noopener">Ouvrir PDF</a>` : '—';
-                    tbody.innerHTML += `<tr><td><strong>${l.title}</strong></td><td>${l.subject_id}</td><td>${l.category}</td><td>${pdfLink}</td><td><button class="btn-submit" type="button" onclick="editLesson('${l.id}')">Modifier</button> <button class="btn-delete" type="button" onclick="deleteLesson('${l.id}')">Supprimer</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><strong>${l.title}</strong></td><td>${l.subject_id}</td><td>${l.category}</td><td>T${l.trimester || 1}</td><td>${pdfLink}</td><td><button class="btn-submit" type="button" onclick="editLesson('${l.id}')">Modifier</button> <button class="btn-delete" type="button" onclick="deleteLesson('${l.id}')">Supprimer</button></td></tr>`;
                 });
             }
         }
@@ -1048,7 +1059,7 @@
         async function editLesson(id) {
             const { data: lesson, error } = await supabaseClient
                 .from('lessons')
-                .select('id, subject_id, category, level_key, section_key, title, description, pdf_url, video_url')
+                .select('id, subject_id, category, level_key, section_key, trimester, title, description, pdf_url, video_url')
                 .eq('id', id)
                 .single();
 
@@ -1062,6 +1073,7 @@
             document.getElementById('lesson-category').value = lesson.category || 'cours';
             document.getElementById('lesson-level').value = lesson.level_key || 'bac';
             document.getElementById('lesson-section').value = lesson.section_key || '';
+            document.getElementById('lesson-trimester').value = String(lesson.trimester || 1);
             document.getElementById('lesson-title').value = lesson.title || '';
             document.getElementById('lesson-desc').value = lesson.description || '';
             document.getElementById('lesson-pdf').value = lesson.pdf_url || '';
