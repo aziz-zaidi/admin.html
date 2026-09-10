@@ -797,7 +797,11 @@
         </div>
 
         <div id="tab-students" class="admin-section">
-            <h2 class="section-title">Liste des Élèves Inscrits</h2>
+            <h2 class="section-title">Utilisateurs et élèves</h2>
+            <p style="color: var(--muted); font-size: 14px;">
+                Les enseignants peuvent consulter les anciens et nouveaux comptes. Les mots de passe ne sont jamais visibles ;
+                utilisez la réinitialisation sécurisée pour un élève.
+            </p>
             <form id="add-student-form" onsubmit="handleCreateStudent(event)">
                 <div class="form-grid">
                     <div class="form-group">
@@ -1335,7 +1339,6 @@
             if (profiles) {
                 profiles.forEach(p => {
                     const date = new Date(p.created_at).toLocaleDateString('fr-FR');
-                    if (p.role !== 'student') return;
                     const safeStudent = encodeURIComponent(JSON.stringify({
                         id: p.id,
                         full_name: p.full_name || '',
@@ -1346,7 +1349,12 @@
                     const safeEmail = encodeURIComponent(p.email || '');
                     const safeId = encodeURIComponent(p.id || '');
                     const safeName = encodeURIComponent(p.full_name || p.email || 'cet étudiant');
-                    tbody.innerHTML += `<tr><td>${escapeHtml(p.full_name || 'Élève')}</td><td>${escapeHtml(p.email || '')}</td><td><span class="role-badge role-student">student</span></td><td>${escapeHtml(p.level || '—')} — ${escapeHtml(p.section || '—')}</td><td>${date}</td><td><button class="btn-submit" type="button" onclick="editStudent(JSON.parse(decodeURIComponent('${safeStudent}')))">Modifier</button> <button class="btn-submit" type="button" onclick="resetStudentPassword(decodeURIComponent('${safeEmail}'))">Réinitialiser le mot de passe</button> <button class="btn-delete" type="button" onclick="deleteStudent(decodeURIComponent('${safeId}'), decodeURIComponent('${safeName}'))">Supprimer</button></td></tr>`;
+                    const role = p.role || 'non défini';
+                    const isStudent = p.role === 'student';
+                    const actions = isStudent
+                        ? `<button class="btn-submit" type="button" onclick="editStudent(JSON.parse(decodeURIComponent('${safeStudent}')))">Modifier</button> <button class="btn-submit" type="button" onclick="resetStudentPassword(decodeURIComponent('${safeEmail}'))">Réinitialiser le mot de passe</button> <button class="btn-delete" type="button" onclick="deleteStudent(decodeURIComponent('${safeId}'), decodeURIComponent('${safeName}'))">Supprimer</button>`
+                        : '<span style="color: var(--muted);">Compte protégé</span>';
+                    tbody.innerHTML += `<tr><td>${escapeHtml(p.full_name || 'Utilisateur')}</td><td>${escapeHtml(p.email || '—')}</td><td><span class="role-badge ${role === 'admin' ? 'role-admin' : 'role-student'}">${escapeHtml(role)}</span></td><td>${escapeHtml(p.level || '—')} — ${escapeHtml(p.section || '—')}</td><td>${date}</td><td>${actions}</td></tr>`;
                 });
             }
         }
