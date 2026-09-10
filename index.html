@@ -849,6 +849,7 @@
                 </thead>
                 <tbody id="students-table-body"></tbody>
             </table>
+            <small id="students-load-status" aria-live="polite"></small>
         </div>
     </main>
 
@@ -1333,9 +1334,24 @@
         }
 
         async function loadStudents() {
-            const { data: profiles } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
+            const status = document.getElementById('students-load-status');
+            const { data: profiles, error } = await supabaseClient
+                .from('profiles')
+                .select('id, full_name, email, role, level, section, created_at')
+                .order('created_at', { ascending: false });
             const tbody = document.getElementById('students-table-body');
             tbody.innerHTML = '';
+            if (error) {
+                status.textContent = `Impossible de charger les utilisateurs : ${error.message}`;
+                return;
+            }
+
+            if (!profiles?.length) {
+                status.textContent = 'Aucun profil trouvé. Exécutez le bloc de synchronisation des utilisateurs dans Supabase SQL Editor.';
+                return;
+            }
+
+            status.textContent = `${profiles.length} utilisateur(s) chargé(s).`;
             if (profiles) {
                 profiles.forEach(p => {
                     const date = new Date(p.created_at).toLocaleDateString('fr-FR');
