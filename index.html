@@ -882,6 +882,20 @@
                 Consultez les comptes administrateurs et enseignants. Un administrateur peut modifier le rôle d’un autre membre du personnel.
                 Les mots de passe ne sont jamais visibles.
             </p>
+            <form id="add-admin-form" onsubmit="handleCreateAdmin(event)" style="margin-bottom: 28px;">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="admin-email-input">Email du nouvel administrateur</label>
+                        <input type="email" id="admin-email-input" required autocomplete="email" />
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-password-input">Mot de passe temporaire</label>
+                        <input type="password" id="admin-password-input" required minlength="6" autocomplete="new-password" />
+                    </div>
+                </div>
+                <button type="submit" class="btn-submit">Ajouter l’administrateur</button>
+                <small id="admin-create-status" aria-live="polite"></small>
+            </form>
             <table>
                 <thead>
                     <tr>
@@ -1490,6 +1504,48 @@
                     <td>${action}</td>
                 </tr>`;
             });
+        }
+
+        async function handleCreateAdmin(event) {
+            event.preventDefault();
+            if (currentUserRole !== 'admin') {
+                document.getElementById('admin-create-status').textContent = 'Seul un administrateur peut créer un autre administrateur.';
+                return;
+            }
+
+            const form = event.currentTarget;
+            const status = document.getElementById('admin-create-status');
+            const submitButton = form.querySelector('button[type="submit"]');
+            const email = document.getElementById('admin-email-input').value.trim().toLowerCase();
+            const password = document.getElementById('admin-password-input').value;
+
+            submitButton.disabled = true;
+            status.textContent = 'Création du compte sécurisé...';
+
+            try {
+                const { error } = await supabaseClient.functions.invoke('create-staff', {
+                    body: { email, password, role: 'admin' }
+                });
+                if (error) {
+                    const responseText = await error.context?.text?.().catch(() => '');
+                    let details = responseText || error.message;
+                    try {
+                        details = JSON.parse(details).message || details;
+                    } catch {
+                        // Keep the server message when it is not JSON.
+                    }
+                    status.textContent = details.includes('function was not found')
+                        ? 'La fonction create-staff doit être déployée sur Supabase.'
+                        : `Échec : ${details}`;
+                    return;
+                }
+
+                form.reset();
+                status.textContent = 'Administrateur créé. Le mot de passe ne sera plus affiché.';
+                loadStaff();
+            } finally {
+                submitButton.disabled = false;
+            }
         }
 
         async function changeStaffRole(encodedId, role) {
