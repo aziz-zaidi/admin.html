@@ -341,6 +341,29 @@
             min-width: 0;
         }
 
+        .conditional-lesson-field {
+            overflow: hidden;
+            max-height: 180px;
+            opacity: 1;
+            transform: translateY(0);
+            transition: max-height 220ms ease, opacity 180ms ease, transform 220ms ease;
+        }
+
+        .conditional-lesson-field[hidden] {
+            display: flex;
+            max-height: 0;
+            margin: 0;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .conditional-lesson-field {
+                transition: none;
+            }
+        }
+
         .form-group.full-width {
             grid-column: 1 / -1;
         }
@@ -729,18 +752,18 @@
                         <select id="lesson-section" required></select>
                     </div>
 
-                    <div class="form-group" id="lesson-trimester-group" hidden>
+                    <div class="form-group conditional-lesson-field" id="lesson-trimester-group" hidden aria-hidden="true">
                         <label for="lesson-trimester">Trimestre</label>
-                        <select id="lesson-trimester">
+                        <select id="lesson-trimester" disabled>
                             <option value="1">Trimestre 1</option>
                             <option value="2">Trimestre 2</option>
                             <option value="3">Trimestre 3</option>
                         </select>
                     </div>
 
-                    <div class="form-group" id="lesson-assessment-group" hidden>
+                    <div class="form-group conditional-lesson-field" id="lesson-assessment-group" hidden aria-hidden="true">
                         <label for="lesson-assessment">Type de devoir</label>
-                        <select id="lesson-assessment">
+                        <select id="lesson-assessment" disabled>
                             <option value="devoir_controle_1">Devoir de contrôle 1</option>
                             <option value="devoir_controle_2">Devoir de contrôle 2</option>
                             <option value="devoir_synthese_1">Devoir de synthèse 1</option>
@@ -901,11 +924,24 @@
         function updateLessonCategory(category = document.getElementById('lesson-category').value) {
             const trimesterGroup = document.getElementById('lesson-trimester-group');
             const assessmentGroup = document.getElementById('lesson-assessment-group');
+            const trimesterInput = document.getElementById('lesson-trimester');
+            const assessmentInput = document.getElementById('lesson-assessment');
             const isHomework = category === 'devoirs';
-            trimesterGroup.hidden = category !== 'devoirs';
+            trimesterGroup.hidden = !isHomework;
             assessmentGroup.hidden = !isHomework;
-            document.getElementById('lesson-trimester').required = isHomework;
-            document.getElementById('lesson-assessment').required = isHomework;
+            trimesterGroup.setAttribute('aria-hidden', String(!isHomework));
+            assessmentGroup.setAttribute('aria-hidden', String(!isHomework));
+            trimesterInput.disabled = !isHomework;
+            assessmentInput.disabled = !isHomework;
+            trimesterInput.required = isHomework;
+            assessmentInput.required = isHomework;
+
+            if (!isHomework) {
+                trimesterInput.value = '';
+                assessmentInput.value = '';
+            } else if (!trimesterInput.value) {
+                trimesterInput.value = '1';
+            }
         }
 
         function normalizeLessonText(value) {
@@ -1265,7 +1301,18 @@
         }
 
         async function loadLessons() {
-            const { data: lessons } = await supabaseClient.from('lessons').select('*').order('created_at', { ascending: false });
+            const { data: lessons, error } = await supabaseClient
+                .from('lessons')
+                .select('id, subject_id, category, level_key, section_key, trimester, assessment_type, title, description, pdf_url, video_url')
+                .order('title', { ascending: true });
+            if (error) {
+                console.error('Lesson loading failed:', error.message);
+                loadedLessons = [];
+                document.getElementById('lessons-table-body').innerHTML =
+                    `<tr><td colspan="6">Impossible de charger les leçons : ${escapeHtml(error.message)}</td></tr>`;
+                return;
+            }
+
             loadedLessons = lessons || [];
             updateLessonTitleOptions();
             const tbody = document.getElementById('lessons-table-body');
@@ -1337,8 +1384,8 @@
             const status = document.getElementById('students-load-status');
             const { data: profiles, error } = await supabaseClient
                 .from('profiles')
-                .select('id, full_name, email, role, level, section, created_at')
-                .order('created_at', { ascending: false });
+                .select('id, full_name, email, role, level, section')
+                .order('email', { ascending: true });
             const tbody = document.getElementById('students-table-body');
             tbody.innerHTML = '';
             if (error) {
@@ -1354,7 +1401,7 @@
             status.textContent = `${profiles.length} utilisateur(s) chargé(s).`;
             if (profiles) {
                 profiles.forEach(p => {
-                    const date = new Date(p.created_at).toLocaleDateString('fr-FR');
+                    const date = '—';
                     const safeStudent = encodeURIComponent(JSON.stringify({
                         id: p.id,
                         full_name: p.full_name || '',
