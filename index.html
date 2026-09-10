@@ -350,12 +350,7 @@
         }
 
         .conditional-lesson-field[hidden] {
-            display: flex;
-            max-height: 0;
-            margin: 0;
-            opacity: 0;
-            pointer-events: none;
-            transform: translateY(-6px);
+            display: none;
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -535,6 +530,11 @@
             color: #f4bf62;
         }
 
+        .role-teacher {
+            background: rgba(99, 239, 255, 0.14);
+            color: var(--cyan);
+        }
+
         .btn-delete {
             min-height: 32px;
             padding: 5px 10px;
@@ -684,6 +684,7 @@
                 <li class="nav-item active" onclick="switchTab('dashboard', event)">Dashboard</li>
                 <li class="nav-item" onclick="switchTab('lessons', event)">Gestion des Cours</li>
                 <li class="nav-item" onclick="switchTab('students', event)">Gestion des Élèves</li>
+                <li class="nav-item" onclick="switchTab('staff', event)">Gestion des Admins</li>
             </ul>
         </div>
         <button class="btn-logout" onclick="logout()">Déconnexion</button>
@@ -728,7 +729,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Catégorie</label>
+                        <label for="lesson-category">Type de ressource</label>
                         <select id="lesson-category" required>
                             <option value="cours">Cours</option>
                             <option value="exercices">Exercices</option>
@@ -874,6 +875,27 @@
             </table>
             <small id="students-load-status" aria-live="polite"></small>
         </div>
+
+        <div id="tab-staff" class="admin-section">
+            <h2 class="section-title">Gestion des administrateurs</h2>
+            <p style="color: var(--muted); font-size: 14px;">
+                Consultez les comptes administrateurs et enseignants. Un administrateur peut modifier le rôle d’un autre membre du personnel.
+                Les mots de passe ne sont jamais visibles.
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nom complet</th>
+                        <th>Email</th>
+                        <th>Rôle</th>
+                        <th>Niveau / Filière</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="staff-table-body"></tbody>
+            </table>
+            <small id="staff-load-status" aria-live="polite"></small>
+        </div>
     </main>
 
     <script>
@@ -886,6 +908,7 @@
         const ADMIN_ROLES = ['admin', 'teacher'];
 
         let currentUser = null;
+        let currentUserRole = null;
         const LESSON_FILES_BUCKET = 'lesson-files';
         const LESSON_SECTIONS = {
             '1ere': ['Tronc Commun'],
@@ -926,7 +949,7 @@
             const assessmentGroup = document.getElementById('lesson-assessment-group');
             const trimesterInput = document.getElementById('lesson-trimester');
             const assessmentInput = document.getElementById('lesson-assessment');
-            const isHomework = category === 'devoirs';
+            const isHomework = String(category).trim().toLowerCase() === 'devoirs';
             trimesterGroup.hidden = !isHomework;
             assessmentGroup.hidden = !isHomework;
             trimesterGroup.setAttribute('aria-hidden', String(!isHomework));
@@ -967,12 +990,17 @@
             }
         }
 
-        function isValidHttpUrl(value) {
-            if (!value) return false;
+        function normalizeExternalUrl(value) {
+            const rawValue = normalizeLessonText(value);
+            if (!rawValue) return '';
+            const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(rawValue)
+                ? rawValue
+                : `https://${rawValue}`;
             try {
-                return ['http:', 'https:'].includes(new URL(value).protocol);
+                const url = new URL(candidate);
+                return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
             } catch {
-                return false;
+                return '';
             }
         }
 
@@ -1043,11 +1071,13 @@
             }
 
             currentUser = session.user;
+            currentUserRole = effectiveRole;
             document.getElementById('admin-email').innerText = currentUser.email;
 
             loadDashboardStats();
             loadLessons();
             loadStudents();
+            loadStaff();
         });
 
         function switchTab(tabName, event) {
@@ -1193,16 +1223,17 @@
             const editId = document.getElementById('lesson-edit-id').value;
             const subject_id = document.getElementById('lesson-subject').value;
             const category = document.getElementById('lesson-category').value;
+            const isHomework = category === 'devoirs';
             const level_key = document.getElementById('lesson-level').value;
             const section_key = normalizeLessonText(document.getElementById('lesson-section').value);
-            const trimester = category === 'devoirs' ? Number(document.getElementById('lesson-trimester').value) : null;
-            const assessment_type = category === 'devoirs'
+            const trimester = isHomework ? Number(document.getElementById('lesson-trimester').value) : null;
+            const assessment_type = isHomework
                 ? document.getElementById('lesson-assessment').value
                 : null;
             const title = normalizeLessonText(document.getElementById('lesson-title').value);
             const description = normalizeLessonText(document.getElementById('lesson-desc').value);
-            let pdf_url = normalizeLessonText(document.getElementById('lesson-pdf').value);
-            const video_url = normalizeLessonText(document.getElementById('lesson-video').value);
+            let pdf_url = normalizeExternalUrl(document.getElementById('lesson-pdf').value);
+            const video_url = normalizeExternalUrl(document.getElementById('lesson-video').value);
 
             const pdfFile = document.getElementById('lesson-pdf-file').files[0];
             if (!LESSON_SECTIONS[level_key]?.includes(section_key)) {
@@ -1217,7 +1248,7 @@
                 alert('La description ne doit pas dépasser 1000 caractères.');
                 return;
             }
-            if (category === 'devoirs' && (!Number.isInteger(trimester) || trimester < 1 || trimester > 3 || !assessment_type)) {
+            if (isHomework && (!Number.isInteger(trimester) || trimester < 1 || trimester > 3 || !assessment_type)) {
                 alert('Sélectionnez le trimestre et le type de devoir.');
                 return;
             }
@@ -1225,11 +1256,11 @@
                 alert('Ajoutez un PDF, une URL PDF ou une URL vidéo avant de publier.');
                 return;
             }
-            if (pdf_url && !isValidHttpUrl(pdf_url)) {
+            if (document.getElementById('lesson-pdf').value.trim() && !pdf_url) {
                 alert('L’URL du PDF doit commencer par http:// ou https://.');
                 return;
             }
-            if (video_url && !isValidHttpUrl(video_url)) {
+            if (document.getElementById('lesson-video').value.trim() && !video_url) {
                 alert('L’URL de la vidéo doit commencer par http:// ou https://.');
                 return;
             }
@@ -1420,6 +1451,62 @@
                     tbody.innerHTML += `<tr><td>${escapeHtml(p.full_name || 'Utilisateur')}</td><td>${escapeHtml(p.email || '—')}</td><td><span class="role-badge ${role === 'admin' ? 'role-admin' : 'role-student'}">${escapeHtml(role)}</span></td><td>${escapeHtml(p.level || '—')} — ${escapeHtml(p.section || '—')}</td><td>${date}</td><td>${actions}</td></tr>`;
                 });
             }
+        }
+
+        async function loadStaff() {
+            const status = document.getElementById('staff-load-status');
+            const tbody = document.getElementById('staff-table-body');
+            const { data: profiles, error } = await supabaseClient
+                .from('profiles')
+                .select('id, full_name, email, role, level, section')
+                .in('role', ADMIN_ROLES)
+                .order('email', { ascending: true });
+
+            tbody.innerHTML = '';
+            if (error) {
+                status.textContent = `Impossible de charger les administrateurs : ${error.message}`;
+                return;
+            }
+            if (!profiles?.length) {
+                status.textContent = 'Aucun administrateur ou enseignant trouvé.';
+                return;
+            }
+
+            status.textContent = `${profiles.length} membre(s) du personnel chargé(s).`;
+            profiles.forEach(profile => {
+                const isCurrentUser = profile.id === currentUser?.id;
+                const roleLabel = profile.role === 'admin' ? 'Administrateur' : 'Enseignant';
+                const action = currentUserRole === 'admin' && !isCurrentUser
+                    ? `<select aria-label="Rôle de ${escapeHtml(profile.full_name || profile.email || 'ce compte')}" onchange="changeStaffRole('${encodeURIComponent(profile.id)}', this.value)">
+                            <option value="admin" ${profile.role === 'admin' ? 'selected' : ''}>Administrateur</option>
+                            <option value="teacher" ${profile.role === 'teacher' ? 'selected' : ''}>Enseignant</option>
+                       </select>`
+                    : `<span style="color: var(--muted);">${isCurrentUser ? 'Votre compte' : 'Compte protégé'}</span>`;
+                tbody.innerHTML += `<tr>
+                    <td>${escapeHtml(profile.full_name || 'Utilisateur')}</td>
+                    <td>${escapeHtml(profile.email || '—')}</td>
+                    <td><span class="role-badge ${profile.role === 'admin' ? 'role-admin' : 'role-teacher'}">${roleLabel}</span></td>
+                    <td>${escapeHtml(profile.level || '—')} — ${escapeHtml(profile.section || '—')}</td>
+                    <td>${action}</td>
+                </tr>`;
+            });
+        }
+
+        async function changeStaffRole(encodedId, role) {
+            const profileId = decodeURIComponent(encodedId);
+            if (!['admin', 'teacher'].includes(role) || profileId === currentUser?.id || currentUserRole !== 'admin') {
+                return;
+            }
+            const { error } = await supabaseClient.rpc('set_staff_role', {
+                target_user_id: profileId,
+                new_role: role
+            });
+            if (error) {
+                alert(`Modification impossible : ${error.message}`);
+                loadStaff();
+                return;
+            }
+            loadStaff();
         }
 
         async function logout() {
