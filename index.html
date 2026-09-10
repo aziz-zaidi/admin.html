@@ -1547,6 +1547,14 @@
                 form.reset();
                 status.textContent = 'Administrateur créé. Le mot de passe ne sera plus affiché.';
                 loadStaff();
+            } catch (error) {
+                const message = String(error?.message || error);
+                const isUnavailable = message.toLowerCase().includes('failed to send a request') ||
+                    message.toLowerCase().includes('function was not found') ||
+                    message.toLowerCase().includes('fetch');
+                status.textContent = isUnavailable
+                    ? 'Impossible de contacter create-staff. Déployez la fonction Edge sur ce projet Supabase, puis réessayez.'
+                    : `Échec : ${message}`;
             } finally {
                 submitButton.disabled = false;
             }
