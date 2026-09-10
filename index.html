@@ -731,22 +731,32 @@
 
                     <div class="form-group" id="lesson-trimester-group" hidden>
                         <label for="lesson-trimester">Trimestre</label>
-                        <select id="lesson-trimester" required>
+                        <select id="lesson-trimester">
                             <option value="1">Trimestre 1</option>
                             <option value="2">Trimestre 2</option>
                             <option value="3">Trimestre 3</option>
                         </select>
                     </div>
 
+                    <div class="form-group" id="lesson-assessment-group" hidden>
+                        <label for="lesson-assessment">Type de devoir</label>
+                        <select id="lesson-assessment">
+                            <option value="devoir_controle_1">Devoir de contrôle 1</option>
+                            <option value="devoir_controle_2">Devoir de contrôle 2</option>
+                            <option value="devoir_synthese_1">Devoir de synthèse 1</option>
+                            <option value="devoir_synthese_2">Devoir de synthèse 2</option>
+                        </select>
+                    </div>
+
                     <div class="form-group full-width">
                         <label for="lesson-title">Nom du chapitre / ressource</label>
-                        <input type="text" id="lesson-title" list="lesson-title-options" placeholder="ex: Oscillations mécaniques libres" required />
+                        <input type="text" id="lesson-title" list="lesson-title-options" maxlength="160" placeholder="ex: Oscillations mécaniques libres" required />
                         <datalist id="lesson-title-options"></datalist>
                     </div>
 
                     <div class="form-group full-width">
                         <label>Description courte</label>
-                        <textarea id="lesson-desc" rows="2" placeholder="Résumé du contenu..."></textarea>
+                        <textarea id="lesson-desc" rows="2" maxlength="1000" placeholder="Résumé du contenu..."></textarea>
                     </div>
 
                     <div class="form-group">
@@ -777,7 +787,7 @@
                         <th>Titre</th>
                         <th>Matière</th>
                         <th>Catégorie</th>
-                        <th>Trimestre</th>
+                        <th>Trimestre / évaluation</th>
                         <th>PDF</th>
                         <th>Actions</th>
                     </tr>
@@ -846,9 +856,9 @@
         const LESSON_FILES_BUCKET = 'lesson-files';
         const LESSON_SECTIONS = {
             '1ere': ['Tronc Commun'],
-            '2eme': ['Sciences', 'Technologie', 'Économie et Services', 'Lettres'],
-            '3eme': ['Mathématiques', 'Sciences Expérimentales', 'Sciences Techniques', 'Sciences de l\'Informatique', 'Économie et Gestion', 'Lettres', 'Sport'],
-            'bac': ['Bac Mathématiques', 'Bac Sciences Expérimentales', 'Bac Sciences Techniques', 'Bac Sciences de l\'Informatique', 'Bac Économie et Gestion', 'Bac Lettres', 'Bac Sport']
+            '2eme': ['Sciences', 'Technologie'],
+            '3eme': ['Mathématiques', 'Sciences Expérimentales', 'Sciences Techniques'],
+            'bac': ['Bac Mathématiques', 'Bac Sciences Expérimentales', 'Bac Sciences Techniques']
         };
         const CURRICULUM_TITLES = {
             '1ere': {
@@ -879,7 +889,45 @@
         }
 
         function updateLessonCategory(category = document.getElementById('lesson-category').value) {
-            document.getElementById('lesson-trimester-group').hidden = category !== 'devoirs';
+            const trimesterGroup = document.getElementById('lesson-trimester-group');
+            const assessmentGroup = document.getElementById('lesson-assessment-group');
+            const isHomework = category === 'devoirs';
+            trimesterGroup.hidden = category !== 'devoirs';
+            assessmentGroup.hidden = !isHomework;
+            document.getElementById('lesson-trimester').required = isHomework;
+            document.getElementById('lesson-assessment').required = isHomework;
+        }
+
+        function normalizeLessonText(value) {
+            return String(value || '').trim().replace(/\s+/g, ' ');
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            }[character]));
+        }
+
+        function safeLessonUrl(value) {
+            try {
+                const url = new URL(value, window.location.href);
+                return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+            } catch {
+                return '';
+            }
+        }
+
+        function isValidHttpUrl(value) {
+            if (!value) return false;
+            try {
+                return ['http:', 'https:'].includes(new URL(value).protocol);
+            } catch {
+                return false;
+            }
         }
 
         function updateLessonTitleOptions() {
@@ -893,7 +941,7 @@
                     .filter(lesson => (!lesson.level_key || lesson.level_key === level) && (!lesson.section_key || lesson.section_key === section) && lesson.subject_id === subject)
                     .map(lesson => lesson.title)
             ];
-            options.innerHTML = [...new Set(titles)].map(title => `<option value="${title}"></option>`).join('');
+            options.innerHTML = [...new Set(titles)].map(title => `<option value="${escapeHtml(title)}"></option>`).join('');
         }
 
         async function restoreTransferredSession() {
@@ -1018,12 +1066,7 @@
         }
 
         function updateStudentSections(level) {
-            const sections = {
-                '1ere': ['Tronc Commun'],
-                '2eme': ['Sciences', 'Technologie', 'Économie et Services', 'Lettres'],
-                '3eme': ['Mathématiques', 'Sciences Expérimentales', 'Sciences Techniques', 'Sciences de l\'Informatique', 'Économie et Gestion', 'Lettres', 'Sport'],
-                'bac': ['Bac Mathématiques', 'Bac Sciences Expérimentales', 'Bac Sciences Techniques', 'Bac Sciences de l\'Informatique', 'Bac Économie et Gestion', 'Bac Lettres', 'Bac Sport']
-            };
+            const sections = LESSON_SECTIONS;
             const select = document.getElementById('student-section');
             select.innerHTML = (sections[level] || []).map(section => `<option value="${section}">${section}</option>`).join('');
         }
@@ -1036,14 +1079,45 @@
             const subject_id = document.getElementById('lesson-subject').value;
             const category = document.getElementById('lesson-category').value;
             const level_key = document.getElementById('lesson-level').value;
-            const section_key = document.getElementById('lesson-section').value.trim();
-            const trimester = Number(document.getElementById('lesson-trimester').value);
-            const title = document.getElementById('lesson-title').value;
-            const description = document.getElementById('lesson-desc').value;
-            let pdf_url = document.getElementById('lesson-pdf').value.trim();
-            const video_url = document.getElementById('lesson-video').value;
+            const section_key = normalizeLessonText(document.getElementById('lesson-section').value);
+            const trimester = category === 'devoirs' ? Number(document.getElementById('lesson-trimester').value) : null;
+            const assessment_type = category === 'devoirs'
+                ? document.getElementById('lesson-assessment').value
+                : null;
+            const title = normalizeLessonText(document.getElementById('lesson-title').value);
+            const description = normalizeLessonText(document.getElementById('lesson-desc').value);
+            let pdf_url = normalizeLessonText(document.getElementById('lesson-pdf').value);
+            const video_url = normalizeLessonText(document.getElementById('lesson-video').value);
 
             const pdfFile = document.getElementById('lesson-pdf-file').files[0];
+            if (!LESSON_SECTIONS[level_key]?.includes(section_key)) {
+                alert('La section sélectionnée ne correspond pas au niveau choisi.');
+                return;
+            }
+            if (title.length < 3) {
+                alert('Le titre doit contenir au moins 3 caractères.');
+                return;
+            }
+            if (description.length > 1000) {
+                alert('La description ne doit pas dépasser 1000 caractères.');
+                return;
+            }
+            if (category === 'devoirs' && (!Number.isInteger(trimester) || trimester < 1 || trimester > 3 || !assessment_type)) {
+                alert('Sélectionnez le trimestre et le type de devoir.');
+                return;
+            }
+            if (!pdfFile && !pdf_url && !video_url) {
+                alert('Ajoutez un PDF, une URL PDF ou une URL vidéo avant de publier.');
+                return;
+            }
+            if (pdf_url && !isValidHttpUrl(pdf_url)) {
+                alert('L’URL du PDF doit commencer par http:// ou https://.');
+                return;
+            }
+            if (video_url && !isValidHttpUrl(video_url)) {
+                alert('L’URL de la vidéo doit commencer par http:// ou https://.');
+                return;
+            }
             if (pdfFile) {
                 if (pdfFile.type !== 'application/pdf' && !pdfFile.name.toLowerCase().endsWith('.pdf')) {
                     alert('Veuillez sélectionner un fichier PDF.');
@@ -1075,7 +1149,18 @@
                     if (uploadStatus) uploadStatus.textContent = 'PDF téléversé. Publication en cours...';
                 }
 
-                    const lessonData = { subject_id, category, level_key, section_key, trimester: category === 'devoirs' ? trimester : null, title, description, pdf_url, video_url };
+                const lessonData = {
+                    subject_id,
+                    category,
+                    level_key,
+                    section_key,
+                    trimester,
+                    assessment_type,
+                    title,
+                    description,
+                    pdf_url,
+                    video_url
+                };
                 const result = editId
                     ? await supabaseClient.from('lessons').update(lessonData).eq('id', editId)
                     : await supabaseClient.from('lessons').insert([lessonData]);
@@ -1104,8 +1189,15 @@
             tbody.innerHTML = '';
             if (lessons) {
                 lessons.forEach(l => {
-                    const pdfLink = l.pdf_url ? `<a href="${l.pdf_url}" target="_blank" rel="noopener">Ouvrir PDF</a>` : '—';
-                    tbody.innerHTML += `<tr><td><strong>${l.title}</strong></td><td>${l.subject_id}</td><td>${l.category}</td><td>T${l.trimester || 1}</td><td>${pdfLink}</td><td><button class="btn-submit" type="button" onclick="editLesson('${l.id}')">Modifier</button> <button class="btn-delete" type="button" onclick="deleteLesson('${l.id}')">Supprimer</button></td></tr>`;
+                    const pdfUrl = safeLessonUrl(l.pdf_url);
+                    const pdfLink = pdfUrl ? `<a href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener">Ouvrir PDF</a>` : '—';
+                    const assessmentLabel = l.category === 'devoirs' && l.assessment_type
+                        ? ` — ${String(l.assessment_type).replace(/_/g, ' ')}`
+                        : '';
+                    const periodLabel = l.category === 'devoirs'
+                        ? `T${Number(l.trimester) || 1}${assessmentLabel}`
+                        : '—';
+                    tbody.innerHTML += `<tr><td><strong>${escapeHtml(l.title)}</strong><br><small>${escapeHtml(l.level_key || '')} — ${escapeHtml(l.section_key || '')}</small></td><td>${escapeHtml(l.subject_id)}</td><td>${escapeHtml(l.category)}</td><td>${escapeHtml(periodLabel)}</td><td>${pdfLink}</td><td><button class="btn-submit" type="button" onclick="editLesson('${escapeHtml(l.id)}')">Modifier</button> <button class="btn-delete" type="button" onclick="deleteLesson('${escapeHtml(l.id)}')">Supprimer</button></td></tr>`;
                 });
             }
         }
@@ -1113,7 +1205,7 @@
         async function editLesson(id) {
             const { data: lesson, error } = await supabaseClient
                 .from('lessons')
-                .select('id, subject_id, category, level_key, section_key, trimester, title, description, pdf_url, video_url')
+                .select('id, subject_id, category, level_key, section_key, trimester, assessment_type, title, description, pdf_url, video_url')
                 .eq('id', id)
                 .single();
 
@@ -1127,9 +1219,12 @@
             document.getElementById('lesson-category').value = lesson.category || 'cours';
             document.getElementById('lesson-level').value = lesson.level_key || 'bac';
             updateLessonSections(lesson.level_key || 'bac', lesson.section_key || '');
-            document.getElementById('lesson-section').value = lesson.section_key || '';
+            document.getElementById('lesson-section').value = LESSON_SECTIONS[lesson.level_key || 'bac']?.includes(lesson.section_key)
+                ? lesson.section_key
+                : LESSON_SECTIONS[lesson.level_key || 'bac']?.[0] || '';
             updateLessonCategory(lesson.category || 'cours');
             document.getElementById('lesson-trimester').value = String(lesson.trimester || 1);
+            document.getElementById('lesson-assessment').value = lesson.assessment_type || 'devoir_controle_1';
             document.getElementById('lesson-title').value = lesson.title || '';
             document.getElementById('lesson-desc').value = lesson.description || '';
             document.getElementById('lesson-pdf').value = lesson.pdf_url || '';
