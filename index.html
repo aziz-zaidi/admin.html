@@ -811,6 +811,7 @@
                     <div class="form-group">
                         <label for="student-password">Mot de passe temporaire</label>
                         <input type="password" id="student-password" required minlength="6" autocomplete="new-password" />
+                        <small>Le mot de passe n’est jamais affiché. Utilisez l’action de réinitialisation pour le modifier.</small>
                     </div>
                     <div class="form-group">
                         <label for="student-level">Niveau</label>
@@ -826,7 +827,9 @@
                         <select id="student-section" required></select>
                     </div>
                 </div>
+                <input type="hidden" id="student-edit-id" value="" />
                 <button type="submit" class="btn-submit">Créer l'accès étudiant</button>
+                <button type="button" class="btn-delete" id="student-cancel-edit" onclick="cancelStudentEdit()" hidden>Annuler la modification</button>
                 <small id="student-create-status" aria-live="polite"></small>
             </form>
             <table>
@@ -835,7 +838,9 @@
                         <th>Nom Complet</th>
                         <th>Email</th>
                         <th>Rôle</th>
+                        <th>Année / Filière</th>
                         <th>Date d'inscription</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="students-table-body"></tbody>
@@ -1031,14 +1036,33 @@
             submitButton.disabled = true;
             status.textContent = 'Création du compte...';
 
+            const editId = document.getElementById('student-edit-id').value;
+            const studentData = {
+                full_name: document.getElementById('student-name').value.trim(),
+                level: document.getElementById('student-level').value,
+                section: document.getElementById('student-section').value.trim()
+            };
+
             try {
+                if (editId) {
+                    const { error } = await supabaseClient
+                        .from('profiles')
+                        .update(studentData)
+                        .eq('id', editId)
+                        .eq('role', 'student');
+                    if (error) throw error;
+                    form.reset();
+                    cancelStudentEdit();
+                    status.textContent = 'Profil étudiant mis à jour.';
+                    loadStudents();
+                    return;
+                }
+
                 const { error } = await supabaseClient.functions.invoke('create-student', {
                     body: {
-                        email: document.getElementById('student-email').value.trim(),
+                        email: document.getElementById('student-email').value.trim().toLowerCase(),
                         password: document.getElementById('student-password').value,
-                        full_name: document.getElementById('student-name').value.trim(),
-                        level: document.getElementById('student-level').value,
-                        section: document.getElementById('student-section').value.trim()
+                        ...studentData
                     }
                 });
 
@@ -1061,6 +1085,56 @@
 
             form.reset();
             status.textContent = 'Compte étudiant créé.';
+            loadStudents();
+            loadDashboardStats();
+        }
+
+        function editStudent(student) {
+            document.getElementById('student-edit-id').value = student.id;
+            document.getElementById('student-name').value = student.full_name || '';
+            document.getElementById('student-email').value = student.email || '';
+            document.getElementById('student-email').disabled = true;
+            document.getElementById('student-password').required = false;
+            document.getElementById('student-password').value = '';
+            document.getElementById('student-level').value = student.level || 'bac';
+            updateStudentSections(student.level || 'bac');
+            document.getElementById('student-section').value = student.section || '';
+            document.querySelector('#add-student-form .btn-submit').textContent = 'Enregistrer les modifications';
+            document.getElementById('student-cancel-edit').hidden = false;
+            document.getElementById('add-student-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function cancelStudentEdit() {
+            document.getElementById('student-edit-id').value = '';
+            document.getElementById('student-email').disabled = false;
+            document.getElementById('student-password').required = true;
+            document.getElementById('student-password').value = '';
+            document.querySelector('#add-student-form .btn-submit').textContent = 'Créer l’accès étudiant';
+            document.getElementById('student-cancel-edit').hidden = true;
+        }
+
+        async function resetStudentPassword(email) {
+            const cleanEmail = String(email || '').trim().toLowerCase();
+            if (!cleanEmail || !confirm(`Envoyer un lien de réinitialisation à ${cleanEmail} ?`)) return;
+            const { error } = await supabaseClient.auth.resetPasswordForEmail(cleanEmail, {
+                redirectTo: `${window.location.origin}${window.location.pathname}`
+            });
+            if (error) {
+                alert(`Impossible d'envoyer le lien : ${error.message}`);
+                return;
+            }
+            alert('Lien de réinitialisation envoyé à l’adresse de l’étudiant.');
+        }
+
+        async function deleteStudent(studentId, studentName) {
+            if (!confirm(`Supprimer définitivement le compte de ${studentName || 'cet étudiant'} ?`)) return;
+            const { error } = await supabaseClient.rpc('delete_student_account', {
+                target_student_id: studentId
+            });
+            if (error) {
+                alert(`Suppression impossible : ${error.message}. Exécutez la fonction SQL delete_student_account.`);
+                return;
+            }
             loadStudents();
             loadDashboardStats();
         }
@@ -1174,7 +1248,11 @@
                 loadLessons();
                 loadDashboardStats();
             } catch (error) {
-                alert("Erreur: " + error.message);
+                const message = String(error?.message || error);
+                const missingAssessmentColumn = message.includes("assessment_type") && message.includes("schema cache");
+                alert(missingAssessmentColumn
+                    ? "La base Supabase n'est pas encore prête pour les devoirs détaillés. Exécutez dans SQL Editor :\n\nalter table public.lessons add column if not exists assessment_type text;\nnotify pgrst, 'reload schema';\n\nPuis rechargez cette page."
+                    : "Erreur: " + message);
                 if (uploadStatus) uploadStatus.textContent = 'Échec de la publication.';
             } finally {
                 submitButton.disabled = false;
@@ -1257,7 +1335,18 @@
             if (profiles) {
                 profiles.forEach(p => {
                     const date = new Date(p.created_at).toLocaleDateString('fr-FR');
-                    tbody.innerHTML += `<tr><td>${p.full_name || 'Élève'}</td><td>${p.email}</td><td><span class="role-badge ${p.role === 'admin' ? 'role-admin' : 'role-student'}">${p.role}</span></td><td>${date}</td></tr>`;
+                    if (p.role !== 'student') return;
+                    const safeStudent = encodeURIComponent(JSON.stringify({
+                        id: p.id,
+                        full_name: p.full_name || '',
+                        email: p.email || '',
+                        level: p.level || '',
+                        section: p.section || ''
+                    }));
+                    const safeEmail = encodeURIComponent(p.email || '');
+                    const safeId = encodeURIComponent(p.id || '');
+                    const safeName = encodeURIComponent(p.full_name || p.email || 'cet étudiant');
+                    tbody.innerHTML += `<tr><td>${escapeHtml(p.full_name || 'Élève')}</td><td>${escapeHtml(p.email || '')}</td><td><span class="role-badge role-student">student</span></td><td>${escapeHtml(p.level || '—')} — ${escapeHtml(p.section || '—')}</td><td>${date}</td><td><button class="btn-submit" type="button" onclick="editStudent(JSON.parse(decodeURIComponent('${safeStudent}')))">Modifier</button> <button class="btn-submit" type="button" onclick="resetStudentPassword(decodeURIComponent('${safeEmail}'))">Réinitialiser le mot de passe</button> <button class="btn-delete" type="button" onclick="deleteStudent(decodeURIComponent('${safeId}'), decodeURIComponent('${safeName}'))">Supprimer</button></td></tr>`;
                 });
             }
         }
