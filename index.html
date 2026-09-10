@@ -882,7 +882,9 @@
                 Consultez les comptes administrateurs et enseignants. Un administrateur peut modifier le rôle d’un autre membre du personnel.
                 Les mots de passe ne sont jamais visibles.
             </p>
-            <form id="add-admin-form" onsubmit="handleCreateAdmin(event)" style="margin-bottom: 28px;">
+            <div id="admin-creation-panel">
+                <h3 class="section-title" style="font-size: 15px; margin-top: 24px;">Créer l’accès administrateur</h3>
+                <form id="add-admin-form" onsubmit="handleCreateAdmin(event)" style="margin-bottom: 28px;">
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="admin-email-input">Email du nouvel administrateur</label>
@@ -895,7 +897,8 @@
                 </div>
                 <button type="submit" class="btn-submit">Ajouter l’administrateur</button>
                 <small id="admin-create-status" aria-live="polite"></small>
-            </form>
+                </form>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -1087,6 +1090,7 @@
             currentUser = session.user;
             currentUserRole = effectiveRole;
             document.getElementById('admin-email').innerText = currentUser.email;
+            document.getElementById('admin-creation-panel').hidden = currentUserRole !== 'admin';
 
             loadDashboardStats();
             loadLessons();
